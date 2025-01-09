@@ -52,6 +52,22 @@ Stop an instance:
 pushbutan stop i-1234567890abcdef0
 ```
 
+Sign Windows packages:
+```bash
+# Basic usage - sign all packages in a channel
+pushbutan codesign --channel jnoller/label/jnoller --package "llama.cpp=*" \
+    --download-dir win-64-signed
+
+# Sign specific package with options
+pushbutan codesign \
+    --cert prod \
+    --channel jnoller/label/jnoller \
+    --package "llama.cpp=*" \
+    --generate-repodata \
+    --download-dir win-64-signed \
+    --save-logs
+```
+
 ### Python API
 
 ```python
