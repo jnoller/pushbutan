@@ -17,17 +17,40 @@ export GITHUB_TOKEN=your_github_token
 ```
 The token can be a classic Github Token but must have `actions` scope, and be SSO authenticated.
 
-### Basic Usage
+### CLI Commands
 
+List available workflows:
 ```bash
-pushbutan
+pushbutan list
 ```
 
-This will:
-1. List available workflows
-2. Create a Linux GPU instance with default settings (g4dn.4xlarge)
-3. Wait for the instance to be ready
-4. Display instance details (ID, IP, architecture, instance type)
+Start a Linux GPU instance (default):
+```bash
+pushbutan start
+```
+
+Start with specific options:
+```bash
+# Choose instance type
+pushbutan start --instance-type p3.2xlarge
+
+# Set instance lifetime
+pushbutan start --lifetime 48
+
+# Start a Windows instance
+pushbutan start --windows
+
+# Save logs for debugging
+pushbutan start --save-logs
+
+# Combine multiple options
+pushbutan start --instance-type p3.2xlarge --lifetime 48 --windows --save-logs
+```
+
+Stop an instance:
+```bash
+pushbutan stop i-1234567890abcdef0
+```
 
 ### Python API
 

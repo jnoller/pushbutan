@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pushbutan"
 version = "0.1.0"
-description = "Tool to automate creation of rocket-platform developer instances"
+description = "Manage GPU instances in rocket-platform"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
@@ -14,10 +14,11 @@ authors = [
 ]
 dependencies = [
     "githubkit",
+    "click"
 ]
 
 [project.scripts]
-pushbutan = "pushbutan.pushbutan:main"
+pushbutan = "pushbutan.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
