@@ -1,8 +1,6 @@
 # Pushbutan
 <img src="docs/butan.jpg" alt="Sisyphus" width="40%" height="40%"/>
 
-<img src="docs/butan.jpg" alt="Sisyphus" width="40%" height="40%"/>
-
 A tool to manage GPU instances in the rocket-platform GitHub Actions environment.
 
 ## Installation
