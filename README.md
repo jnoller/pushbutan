@@ -1,6 +1,5 @@
 # Pushbutan
-
-![Pushbutan Logo](https://github.com/username/pushbutan/raw/main/doc/butan.jpg)
+<img src="docs/butan.jpg" alt="Sisyphus" width="40%" height="40%"/>
 
 A CLI tool to manage GPU instances in the rocket-platform GitHub Actions environment.
 
