@@ -1,5 +1,6 @@
 import click
 from .pushbutan import Pushbutan, PushbutanError, InstanceType
+from typing import Optional
 
 @click.group()
 def cli():
@@ -68,6 +69,58 @@ def stop(instance_id: str):
         # Wait for stop completion without parsing logs
         pb.wait_for_instance(stop_result["run_id"], parse_logs=False)
         click.echo("\nInstance stop workflow completed!")
+        
+    except PushbutanError as e:
+        click.echo(f"Error: {e}", err=True)
+        exit(1)
+
+@cli.command()
+@click.option('--inspect', is_flag=True, help='Show workflow details and expected inputs')
+@click.option('--cert', type=click.Choice(['prod', 'dev']), default='prod', 
+              help='Which certificate to use')
+@click.option('--channel', required=True, help='The anaconda.org channel to search')
+@click.option('--package', help='Package spec to search for (empty for all packages)')
+@click.option('--generate-repodata', is_flag=True, help='Generate repodata files')
+@click.option('--download-dir', help='Directory to save signed packages')
+@click.option('--save-logs', is_flag=True, help='Save workflow logs for debugging')
+def codesign(inspect: bool, cert: str, channel: str, package: Optional[str], 
+            generate_repodata: bool, download_dir: Optional[str], save_logs: bool):
+    """Trigger Windows package codesigning workflow"""
+    try:
+        pb = Pushbutan()
+        
+        if inspect:
+            details = pb.inspect_codesign_workflow()
+            click.echo("\nCodesign Workflow Details:")
+            click.echo(f"Name: {details['name']}")
+            click.echo(f"ID: {details['id']}")
+            click.echo("\nWorkflow Content:")
+            click.echo(details['content'])
+        else:
+            click.echo("\nTriggering codesign workflow...")
+            result = pb.trigger_codesign(
+                cert=cert,
+                org_channel=channel,
+                package_spec=package,
+                generate_repodata=generate_repodata
+            )
+            
+            # Wait for workflow completion
+            run_id = result["run_id"]
+            click.echo(f"Workflow triggered successfully (Run ID: {run_id})")
+            
+            # Wait for completion
+            pb.wait_for_instance(run_id, parse_logs=False, save_logs=save_logs)
+            click.echo("\nCodesign workflow completed!")
+            
+            # Download artifacts if requested
+            if download_dir:
+                artifact_path = pb.download_workflow_artifact(
+                    run_id=run_id,
+                    artifact_name="signed-packages",
+                    download_dir=download_dir
+                )
+                click.echo(f"\nSigned packages downloaded to: {artifact_path}")
         
     except PushbutanError as e:
         click.echo(f"Error: {e}", err=True)

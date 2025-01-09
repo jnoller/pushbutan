@@ -34,6 +34,7 @@ class Pushbutan:
     REPO_NAME = "rocket-platform"
     DEV_INSTANCE_WORKFLOW_ID = 31526128  # Agents: Start dev instance
     STOP_INSTANCE_WORKFLOW_ID = 31526129  # Agents: Stop instance
+    CODESIGN_WORKFLOW_ID = 93334270  # Codesign Windows Package
     
     def __init__(self, token: Optional[str] = None):
         """Initialize Pushbutan with GitHub token"""
@@ -484,3 +485,157 @@ class Pushbutan:
                 print(f"Response status: {e.response.status_code}")
                 print(f"Response body: {e.response.text}")
             raise PushbutanError(f"Failed to get workflow details: {e}")
+
+    def inspect_codesign_workflow(self) -> dict:
+        """
+        Get details about the codesign workflow and its expected inputs
+        """
+        try:
+            details = self.get_workflow_details(self.CODESIGN_WORKFLOW_ID)
+            return details
+        except Exception as e:
+            raise PushbutanError(f"Failed to inspect codesign workflow: {e}")
+
+    def trigger_codesign(self, cert: str, org_channel: str, package_spec: Optional[str] = None, 
+                        generate_repodata: bool = False) -> dict:
+        """
+        Trigger Windows package codesigning workflow
+        
+        Args:
+            cert: Which certificate to use ('prod' or 'dev')
+            org_channel: The anaconda.org channel to search
+            package_spec: Package spec to search for (optional)
+            generate_repodata: Whether to generate repodata files (default: False)
+            
+        Returns:
+            Dict containing the workflow run information
+        """
+        inputs = {
+            "cert": cert,
+            "org_channel": org_channel,
+            "package_spec": package_spec or "",
+            "generate_repodata_files": generate_repodata
+        }
+        
+        try:
+            # Create timezone-aware UTC datetime
+            start_time = datetime.now(timezone.utc)
+            print(f"Start time: {start_time.strftime('%Y-%m-%dT%H:%M:%SZ')}")
+            print(f"Current user: {self.username}")
+            
+            print(f"Triggering workflow with inputs: {json.dumps(inputs, indent=2)}")
+            
+            # Trigger the workflow
+            response = self.gh.request(
+                "POST",
+                f"/repos/{self.REPO_OWNER}/{self.REPO_NAME}/actions/workflows/{self.CODESIGN_WORKFLOW_ID}/dispatches",
+                json={
+                    "ref": "main",
+                    "inputs": inputs
+                }
+            )
+            
+            print(f"Response status: {response.status_code}")
+            print("Waiting for workflow to start", end="", flush=True)
+            
+            # Initial sleep to give GitHub time to register the workflow
+            for _ in range(5):
+                time.sleep(1)
+                print(".", end="", flush=True)
+            
+            # Retry loop to find the new run
+            max_attempts = 20
+            attempt = 0
+            while attempt < max_attempts:
+                attempt += 1
+                print(".", end="", flush=True)
+                
+                # Get recent runs
+                runs = self.gh.rest.actions.list_workflow_runs(
+                    owner=self.REPO_OWNER,
+                    repo=self.REPO_NAME,
+                    workflow_id=self.CODESIGN_WORKFLOW_ID
+                ).parsed_data.workflow_runs
+                
+                # Filter runs manually since the API filtering isn't reliable
+                for run in runs:
+                    if (run.actor.login == self.username and 
+                        run.created_at >= start_time):  # Now comparing timezone-aware datetimes
+                        print("\nFound workflow run after", attempt, "attempts")
+                        return {"run_id": run.id}
+                
+                time.sleep(2)
+            
+            print("\n")  # End the progress line
+            
+            # If we get here, show all runs to help debug
+            print("\nAll recent workflow runs:")
+            all_runs = self.gh.rest.actions.list_workflow_runs(
+                owner=self.REPO_OWNER,
+                repo=self.REPO_NAME,
+                workflow_id=self.CODESIGN_WORKFLOW_ID
+            ).parsed_data.workflow_runs
+            
+            print(f"Found {len(all_runs)} total runs:")
+            for run in all_runs[:5]:
+                print(f"- Run ID: {run.id}")
+                print(f"  Created: {run.created_at}")
+                print(f"  Status: {run.status}")
+                print(f"  Actor: {run.actor.login if run.actor else 'None'}")
+            
+            raise PushbutanError("Could not find the triggered workflow run after multiple attempts")
+            
+        except Exception as e:
+            print(f"Request failed with inputs: {json.dumps(inputs, indent=2)}")
+            if hasattr(e, 'response'):
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response body: {e.response.text}")
+            raise PushbutanError(f"Failed to trigger workflow: {e}")
+
+    def download_workflow_artifact(self, run_id: int, artifact_name: str, download_dir: str) -> str:
+        """
+        Download an artifact from a workflow run
+        
+        Args:
+            run_id: The workflow run ID
+            artifact_name: Name of the artifact to download
+            download_dir: Directory to save the artifact
+            
+        Returns:
+            Path to the downloaded artifact
+        """
+        try:
+            # List artifacts for the run
+            artifacts = self.gh.rest.actions.list_workflow_run_artifacts(
+                owner=self.REPO_OWNER,
+                repo=self.REPO_NAME,
+                run_id=run_id
+            ).parsed_data.artifacts
+            
+            # Find our artifact
+            artifact = next((a for a in artifacts if a.name == artifact_name), None)
+            if not artifact:
+                raise PushbutanError(f"Could not find artifact '{artifact_name}' in workflow run")
+            
+            # Download the artifact
+            print(f"\nDownloading {artifact_name} ({artifact.size_in_bytes/1024/1024:.1f} MB)...")
+            response = self.gh.rest.actions.download_artifact(
+                owner=self.REPO_OWNER,
+                repo=self.REPO_NAME,
+                artifact_id=artifact.id,
+                archive_format="zip"
+            )
+            
+            # Create download directory
+            os.makedirs(download_dir, exist_ok=True)
+            
+            # Save the artifact
+            artifact_path = os.path.join(download_dir, f"{artifact_name}.zip")
+            with open(artifact_path, 'wb') as f:
+                f.write(response.content)
+                
+            print(f"Saved artifact to: {artifact_path}")
+            return artifact_path
+            
+        except Exception as e:
+            raise PushbutanError(f"Failed to download artifact: {e}")
