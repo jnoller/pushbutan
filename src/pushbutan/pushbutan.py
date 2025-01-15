@@ -7,6 +7,9 @@ from githubkit.utils import Unset
 import time
 import io
 import zipfile
+import logging
+
+log = logging.getLogger("pushbutan")
 
 class PushbutanError(Exception):
     """Base exception class for Pushbutan errors"""
@@ -51,16 +54,10 @@ class Pushbutan:
         except Exception as e:
             raise PushbutanError(f"Failed to get authenticated user: {e}")
     
-    def start_dev_instance(self, 
-                           arch: ArchType,
-                           instance_type: InstanceType,
-                           cuda_version: CudaVersion,
-                           image_id: str = "latest",
-                           branch: str = "main",
-                           lifetime: str = "24") -> dict:
-        """
-        Base method to trigger creation of a dev instance
-        """
+    def start_dev_instance(self, arch: ArchType, instance_type: InstanceType, 
+                          cuda_version: CudaVersion, image_id: str = "latest",
+                          branch: str = "main", lifetime: str = "24") -> dict:
+        """Base method to trigger creation of a dev instance"""
         inputs = {
             "arch": arch,
             "instance_type": instance_type,
@@ -71,12 +68,7 @@ class Pushbutan:
         }
         
         try:
-            # Create timezone-aware UTC datetime
             start_time = datetime.now(timezone.utc)
-            print(f"Start time: {start_time.strftime('%Y-%m-%dT%H:%M:%SZ')}")
-            print(f"Current user: {self.username}")
-            
-            print(f"Triggering workflow with inputs: {json.dumps(inputs, indent=2)}")
             
             # Trigger the workflow
             response = self.gh.request(
@@ -88,62 +80,29 @@ class Pushbutan:
                 }
             )
             
-            print(f"Response status: {response.status_code}")
-            print("Waiting for workflow to start", end="", flush=True)
-            
-            # Initial sleep to give GitHub time to register the workflow
-            for _ in range(5):
-                time.sleep(1)
-                print(".", end="", flush=True)
-            
-            # Retry loop to find the new run
-            max_attempts = 20
-            attempt = 0
-            while attempt < max_attempts:
-                attempt += 1
-                print(".", end="", flush=True)
-                
-                # Get recent runs
+            # Find the new run
+            for attempt in range(20):
+                time.sleep(2)
                 runs = self.gh.rest.actions.list_workflow_runs(
                     owner=self.REPO_OWNER,
                     repo=self.REPO_NAME,
                     workflow_id=self.DEV_INSTANCE_WORKFLOW_ID
                 ).parsed_data.workflow_runs
                 
-                # Filter runs manually since the API filtering isn't reliable
                 for run in runs:
                     if (run.actor.login == self.username and 
-                        run.created_at >= start_time):  # Now comparing timezone-aware datetimes
-                        print("\nFound workflow run after", attempt, "attempts")
-                        return {"run_id": run.id}
-                
-                time.sleep(2)
-            
-            print("\n")  # End the progress line
-            
-            # If we get here, show all runs to help debug
-            print("\nAll recent workflow runs:")
-            all_runs = self.gh.rest.actions.list_workflow_runs(
-                owner=self.REPO_OWNER,
-                repo=self.REPO_NAME,
-                workflow_id=self.DEV_INSTANCE_WORKFLOW_ID
-            ).parsed_data.workflow_runs
-            
-            print(f"Found {len(all_runs)} total runs:")
-            for run in all_runs[:5]:
-                print(f"- Run ID: {run.id}")
-                print(f"  Created: {run.created_at}")
-                print(f"  Status: {run.status}")
-                print(f"  Actor: {run.actor.login if run.actor else 'None'}")
+                        run.created_at >= start_time):
+                        return {
+                            "run_id": run.id,
+                            "status": run.status,
+                            "created_at": run.created_at.isoformat(),
+                            "html_url": run.html_url
+                        }
             
             raise PushbutanError("Could not find the triggered workflow run after multiple attempts")
             
         except Exception as e:
-            print(f"Request failed with inputs: {json.dumps(inputs, indent=2)}")
-            if hasattr(e, 'response'):
-                print(f"Response status: {e.response.status_code}")
-                print(f"Response body: {e.response.text}")
-            raise PushbutanError(f"Failed to trigger workflow: {e}")
+            raise PushbutanError(f"Failed to trigger workflow: {str(e)}")
 
     def trigger_linux_gpu_instance(self,
                                  instance_type: InstanceType = "g4dn.4xlarge",
@@ -268,7 +227,7 @@ class Pushbutan:
                             log_path = f'logs/run_{run_id}_{file_name.replace("/", "_")}'
                             with open(log_path, 'w') as f:
                                 f.write(log_content)
-                            print(f"Saved log file to: {log_path}")
+                            log.info(f"Saved log file to: {log_path}")
             
             # Combine all logs
             combined_logs = '\n'.join(all_logs)
@@ -278,13 +237,13 @@ class Pushbutan:
                 combined_path = f'logs/run_{run_id}_combined.txt'
                 with open(combined_path, 'w') as f:
                     f.write(combined_logs)
-                print(f"Saved combined logs to: {combined_path}")
+                log.info(f"Saved combined logs to: {combined_path}")
                 
                 # Save the original zip file
                 zip_path = f'logs/run_{run_id}.zip'
                 with open(zip_path, 'wb') as f:
                     f.write(response.content)
-                print(f"Saved zip file to: {zip_path}")
+                log.info(f"Saved zip file to: {zip_path}")
             
             return combined_logs
             
@@ -295,35 +254,28 @@ class Pushbutan:
         """Extract instance details from workflow logs"""
         import re
         
-        print("\nSearching logs for instance details...")
+        log.info("Searching logs for instance details...")
         
         # Look for all instance details in the logs, ignoring timestamps
         instance_id_match = re.search(r'.*INSTANCE_IDS:\s+(i-[a-f0-9]+)', logs, re.MULTILINE)
         ip_match = re.search(r'.*\[ "(\d+\.\d+\.\d+\.\d+)" \]', logs, re.MULTILINE)
         platform_match = re.search(r'.*PLATFORM:\s+(linux-64|win-64)', logs, re.MULTILINE)
         instance_type_match = re.search(r'.*INSTANCE_TYPE:\s+(g4dn\.4xlarge|p3\.2xlarge)', logs, re.MULTILINE)
-        
-        # Print debug info for each pattern
-        # print("\nDebug info:")
-        # print(f"Instance ID pattern: {'found' if instance_id_match else 'not found'}")
-        # print(f"IP pattern: {'found' if ip_match else 'not found'}")
-        # print(f"Platform pattern: {'found' if platform_match else 'not found'}")
-        # print(f"Instance type pattern: {'found' if instance_type_match else 'not found'}")
 
         if not instance_id_match:
-            print("Could not find instance ID in logs")
+            log.error("Could not find instance ID in logs")
             raise PushbutanError("Could not find instance ID in workflow logs")
             
         if not ip_match:
-            print("Could not find IP address in logs")
+            log.error("Could not find IP address in logs")
             raise PushbutanError("Could not find IP address in workflow logs")
             
         if not platform_match:
-            print("Could not find platform in logs")
+            log.error("Could not find platform in logs")
             raise PushbutanError("Could not find platform in workflow logs")
             
         if not instance_type_match:
-            print("Could not find instance type in logs")
+            log.error("Could not find instance type in logs")
             raise PushbutanError("Could not find instance type in workflow logs")
             
         instance_id = instance_id_match.group(1)
@@ -331,11 +283,6 @@ class Pushbutan:
         platform = platform_match.group(1)
         instance_type = instance_type_match.group(1)
         
-        # print(f"\nFound instance details:")
-        # print(f"- Instance ID: {instance_id}")
-        # print(f"- IP Address: {ip_address}")
-        # print(f"- Platform: {platform}")
-        # print(f"- Instance Type: {instance_type}")
             
         return {
             "instance_id": instance_id,
@@ -357,7 +304,7 @@ class Pushbutan:
         Returns:
             Dict with workflow results (instance details for start, success status for stop)
         """
-        print(f"\nWaiting for workflow run {run_id} to complete...")
+        log.info(f"Waiting for workflow run {run_id} to complete...")
         start_time = time.time()
         timeout = timeout_minutes * 60
         
@@ -366,7 +313,7 @@ class Pushbutan:
             status = run.status
             conclusion = run.conclusion
             
-            print(f"Status: {status} ({conclusion if conclusion else 'in progress'})")
+            log.info(f"Status: {status} ({conclusion if conclusion else 'in progress'})")
             
             if status == "completed":
                 if conclusion == "success":
@@ -394,7 +341,7 @@ class Pushbutan:
             Dict containing the workflow run information
         """
         try:
-            print(f"Triggering stop workflow for instance: {instance_id}")
+            log.info(f"Triggering stop workflow for instance: {instance_id}")
             
             # Trigger the workflow
             response = self.gh.request(
@@ -408,23 +355,21 @@ class Pushbutan:
                 }
             )
             
-            print(f"Response status: {response.status_code}")
+            log.info(f"Response status: {response.status_code}")
             
             # Get the run ID using similar logic to start_dev_instance
             start_time = datetime.now(timezone.utc)
-            print("Waiting for workflow to start", end="", flush=True)
+            log.info("Waiting for workflow to start...")
             
             # Initial sleep to give GitHub time to register the workflow
             for _ in range(5):
                 time.sleep(1)
-                print(".", end="", flush=True)
             
             # Retry loop to find the new run
             max_attempts = 20
             attempt = 0
             while attempt < max_attempts:
                 attempt += 1
-                print(".", end="", flush=True)
                 
                 runs = self.gh.rest.actions.list_workflow_runs(
                     owner=self.REPO_OWNER,
@@ -435,7 +380,7 @@ class Pushbutan:
                 for run in runs:
                     if (run.actor.login == self.username and 
                         run.created_at >= start_time):
-                        print(f"\nFound workflow run after {attempt} attempts")
+                        log.info(f"Found workflow run after {attempt} attempts")
                         return {"run_id": run.id}
                 
                 time.sleep(2)
@@ -443,10 +388,10 @@ class Pushbutan:
             raise PushbutanError("Could not find the triggered workflow run after multiple attempts")
             
         except Exception as e:
-            print(f"Failed to stop instance: {instance_id}")
+            log.error(f"Failed to stop instance: {instance_id}")
             if hasattr(e, 'response'):
-                print(f"Response status: {e.response.status_code}")
-                print(f"Response body: {e.response.text}")
+                log.error(f"Response status: {e.response.status_code}")
+                log.error(f"Response body: {e.response.text}")
             raise PushbutanError(f"Failed to trigger stop workflow: {e}")
 
     def get_workflow_details(self, workflow_id: int):
@@ -459,7 +404,7 @@ class Pushbutan:
                 workflow_id=workflow_id
             ).parsed_data
             
-            print(f"Workflow path: {workflow.path}")
+            log.info(f"Workflow path: {workflow.path}")
             
             # Then get the actual workflow file content
             content = self.gh.rest.repos.get_content(
@@ -480,10 +425,10 @@ class Pushbutan:
             }
             
         except Exception as e:
-            print(f"Error details: {e}")
+            log.error(f"Error details: {e}")
             if hasattr(e, 'response'):
-                print(f"Response status: {e.response.status_code}")
-                print(f"Response body: {e.response.text}")
+                log.error(f"Response status: {e.response.status_code}")
+                log.error(f"Response body: {e.response.text}")
             raise PushbutanError(f"Failed to get workflow details: {e}")
 
     def inspect_codesign_workflow(self) -> dict:
@@ -520,10 +465,10 @@ class Pushbutan:
         try:
             # Create timezone-aware UTC datetime
             start_time = datetime.now(timezone.utc)
-            print(f"Start time: {start_time.strftime('%Y-%m-%dT%H:%M:%SZ')}")
-            print(f"Current user: {self.username}")
+            log.info(f"Start time: {start_time.strftime('%Y-%m-%dT%H:%M:%SZ')}")
+            log.info(f"Current user: {self.username}")
             
-            print(f"Triggering workflow with inputs: {json.dumps(inputs, indent=2)}")
+            log.info(f"Triggering workflow with inputs: {json.dumps(inputs, indent=2)}")
             
             # Trigger the workflow
             response = self.gh.request(
@@ -535,20 +480,18 @@ class Pushbutan:
                 }
             )
             
-            print(f"Response status: {response.status_code}")
-            print("Waiting for workflow to start", end="", flush=True)
+            log.info(f"Response status: {response.status_code}")
+            log.info("Waiting for workflow to start", end="", flush=True)
             
             # Initial sleep to give GitHub time to register the workflow
             for _ in range(5):
                 time.sleep(1)
-                print(".", end="", flush=True)
             
             # Retry loop to find the new run
             max_attempts = 20
             attempt = 0
             while attempt < max_attempts:
                 attempt += 1
-                print(".", end="", flush=True)
                 
                 # Get recent runs
                 runs = self.gh.rest.actions.list_workflow_runs(
@@ -561,35 +504,33 @@ class Pushbutan:
                 for run in runs:
                     if (run.actor.login == self.username and 
                         run.created_at >= start_time):  # Now comparing timezone-aware datetimes
-                        print("\nFound workflow run after", attempt, "attempts")
+                        log.info(f"Found workflow run after {attempt} attempts")
                         return {"run_id": run.id}
                 
                 time.sleep(2)
             
-            print("\n")  # End the progress line
-            
             # If we get here, show all runs to help debug
-            print("\nAll recent workflow runs:")
+            log.info("All recent workflow runs:")
             all_runs = self.gh.rest.actions.list_workflow_runs(
                 owner=self.REPO_OWNER,
                 repo=self.REPO_NAME,
                 workflow_id=self.CODESIGN_WORKFLOW_ID
             ).parsed_data.workflow_runs
             
-            print(f"Found {len(all_runs)} total runs:")
+            log.info(f"Found {len(all_runs)} total runs:")
             for run in all_runs[:5]:
-                print(f"- Run ID: {run.id}")
-                print(f"  Created: {run.created_at}")
-                print(f"  Status: {run.status}")
-                print(f"  Actor: {run.actor.login if run.actor else 'None'}")
+                log.info(f"Run ID: {run.id}")
+                log.info(f"Created: {run.created_at}")
+                log.info(f"Status: {run.status}")
+                log.info(f"Actor: {run.actor.login if run.actor else 'None'}")
             
             raise PushbutanError("Could not find the triggered workflow run after multiple attempts")
             
         except Exception as e:
-            print(f"Request failed with inputs: {json.dumps(inputs, indent=2)}")
+            log.error(f"Request failed with inputs: {json.dumps(inputs, indent=2)}")
             if hasattr(e, 'response'):
-                print(f"Response status: {e.response.status_code}")
-                print(f"Response body: {e.response.text}")
+                log.error(f"Response status: {e.response.status_code}")
+                log.error(f"Response body: {e.response.text}")
             raise PushbutanError(f"Failed to trigger workflow: {e}")
 
     def download_workflow_artifact(self, run_id: int, artifact_name: str, download_dir: str) -> str:
@@ -618,7 +559,7 @@ class Pushbutan:
                 raise PushbutanError(f"Could not find artifact '{artifact_name}' in workflow run")
             
             # Download the artifact
-            print(f"\nDownloading {artifact_name} ({artifact.size_in_bytes/1024/1024:.1f} MB)...")
+            log.info(f"Downloading {artifact_name} ({artifact.size_in_bytes/1024/1024:.1f} MB)...")
             response = self.gh.rest.actions.download_artifact(
                 owner=self.REPO_OWNER,
                 repo=self.REPO_NAME,
@@ -634,7 +575,7 @@ class Pushbutan:
             with open(artifact_path, 'wb') as f:
                 f.write(response.content)
                 
-            print(f"Saved artifact to: {artifact_path}")
+            log.info(f"Saved artifact to: {artifact_path}")
             return artifact_path
             
         except Exception as e:

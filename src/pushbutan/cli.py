@@ -1,11 +1,46 @@
 import click
 from .pushbutan import Pushbutan, PushbutanError, InstanceType
 from typing import Optional
+import logging
+import sys
+
+# Configure logging for both CLI and library
+def setup_logging(verbose: bool = False):
+    """Configure logging for the CLI and library"""
+    # Create handlers for stdout and stderr
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    
+    # Set format
+    formatter = logging.Formatter('%(message)s')  # Simple format for CLI
+    stdout_handler.setFormatter(formatter)
+    stderr_handler.setFormatter(formatter)
+    
+    # Configure stdout handler for INFO and below
+    stdout_handler.setLevel(logging.INFO)
+    stdout_handler.addFilter(lambda record: record.levelno <= logging.INFO)
+    
+    # Configure stderr handler for WARNING and above
+    stderr_handler.setLevel(logging.WARNING)
+    
+    # Get the root logger and configure it
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO if verbose else logging.INFO)
+    root_logger.addHandler(stdout_handler)
+    root_logger.addHandler(stderr_handler)
+    
+    # Also configure the pushbutan logger specifically
+    pushbutan_logger = logging.getLogger('pushbutan')
+    pushbutan_logger.setLevel(logging.INFO if verbose else logging.INFO)
+
+# Create logger for CLI
+log = logging.getLogger(__name__)
 
 @click.group()
-def cli():
+@click.option('--verbose', is_flag=True, help='Enable verbose logging')
+def cli(verbose: bool):
     """Pushbutan CLI - Manage GPU instances in rocket-platform"""
-    pass
+    setup_logging(verbose)
 
 @cli.command()
 def list():
@@ -43,6 +78,13 @@ def start(instance_type: InstanceType, lifetime: str, windows: bool, save_logs: 
                 instance_type=instance_type,
                 lifetime=lifetime
             )
+            
+        # Print initial workflow information
+        click.echo("\nWorkflow triggered:")
+        click.echo(f"Run ID: {result['run_id']}")
+        click.echo(f"Status: {result['status']}")
+        click.echo(f"Created at: {result['created_at']}")
+        click.echo(f"URL: {result['html_url']}")
         
         # Wait for the instance
         instance = pb.wait_for_instance(result["run_id"], parse_logs=True, save_logs=save_logs)
@@ -83,8 +125,9 @@ def stop(instance_id: str):
 @click.option('--generate-repodata', is_flag=True, help='Generate repodata files')
 @click.option('--download-dir', help='Directory to save signed packages')
 @click.option('--save-logs', is_flag=True, help='Save workflow logs for debugging')
-def codesign(inspect: bool, cert: str, channel: str, package: Optional[str], 
-            generate_repodata: bool, download_dir: Optional[str], save_logs: bool):
+@click.option('--timeout', default=180, help='Timeout in minutes (default: 180)')
+def codesign(inspect: bool, cert: str, channel: str, package: Optional[str],
+            generate_repodata: bool, download_dir: Optional[str], save_logs: bool, timeout: int):
     """Trigger Windows package codesigning workflow"""
     try:
         pb = Pushbutan()
@@ -109,8 +152,8 @@ def codesign(inspect: bool, cert: str, channel: str, package: Optional[str],
             run_id = result["run_id"]
             click.echo(f"Workflow triggered successfully (Run ID: {run_id})")
             
-            # Wait for completion
-            pb.wait_for_instance(run_id, parse_logs=False, save_logs=save_logs)
+            # Wait for completion with longer timeout
+            pb.wait_for_instance(run_id, parse_logs=False, save_logs=save_logs, timeout_minutes=timeout)
             click.echo("\nCodesign workflow completed!")
             
             # Download artifacts if requested

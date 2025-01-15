@@ -6,7 +6,11 @@ A tool to manage GPU instances in the rocket-platform GitHub Actions environment
 ## Installation
 
 ```bash
-pip install pushbutan
+git clone https://github.com/jnoller/pushbutan
+cd pushbutan
+conda create -n pushbutan
+conda activate pushbutan
+pip install -e .
 ```
 
 ## Usage
@@ -65,7 +69,8 @@ pushbutan codesign \
     --package "llama.cpp=*" \
     --generate-repodata \
     --download-dir win-64-signed \
-    --save-logs
+    --save-logs \
+    --timeout 180  # Wait up to 3 hours
 ```
 
 ### Python API
@@ -112,6 +117,30 @@ cd pushbutan
 pip install -e .
 ```
 
-## License
+## Using the Presbutn MCP Server with Claude Desktop
 
-[Insert your license here]
+```bash
+git clone https://github.com/jnoller/pushbutan
+cd pushbutan
+conda create -n pushbutan
+conda activate pushbutan
+pip install -e .
+```
+
+Modify your Claude Desktop Configuration file (claude_desktop_config.json) to launch the MCP server:
+
+* Set the `command` to the path to your conda binary
+* Set the `GITHUB_TOKEN` to your GitHub token
+
+```json
+{
+    "Presbutan": {
+      "command": "<path_to_conda_binary>",
+      "args": ["run", "-n", "pushbutan", "--no-capture-output", "mcpserver"],
+      "env": {
+        "GITHUB_TOKEN": "<your_github_token>"
+      } 
+    }
+  }
+}
+```

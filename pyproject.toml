@@ -14,11 +14,14 @@ authors = [
 ]
 dependencies = [
     "githubkit",
-    "click"
+    "click",
+    "mcp>=1.0.0",
+    "mcp[cli]>=1.0.0"
 ]
 
 [project.scripts]
 pushbutan = "pushbutan.cli:main"
+mcpserver = "pushbutan.mcpserver:run_mcp_server"
 
 [tool.setuptools.packages.find]
 where = ["src"]
