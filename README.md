@@ -139,7 +139,7 @@ Modify your Claude Desktop Configuration file (claude_desktop_config.json) to la
       "args": ["run", "-n", "pushbutan", "--no-capture-output", "mcpserver"],
       "env": {
         "GITHUB_TOKEN": "<your_github_token>"
-      } 
+      }
     }
   }
 }
