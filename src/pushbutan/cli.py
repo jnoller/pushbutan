@@ -121,7 +121,7 @@ def stop(instance_id: str):
 @click.option('--cert', type=click.Choice(['prod', 'dev']), default='prod', 
               help='Which certificate to use')
 @click.option('--channel', required=True, help='The anaconda.org channel to search')
-@click.option('--package', help='Package spec to search for (empty for all packages)')
+@click.option('--package', default='^.*$', help='Package spec to search for (default is for all packages)')
 @click.option('--generate-repodata', is_flag=True, help='Generate repodata files')
 @click.option('--download-dir', help='Directory to save signed packages')
 @click.option('--save-logs', is_flag=True, help='Save workflow logs for debugging')
