@@ -481,7 +481,7 @@ class Pushbutan:
             )
             
             log.info(f"Response status: {response.status_code}")
-            log.info("Waiting for workflow to start", end="", flush=True)
+            log.info("Waiting for workflow to start")
             
             # Initial sleep to give GitHub time to register the workflow
             for _ in range(5):
