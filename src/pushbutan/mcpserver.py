@@ -10,8 +10,8 @@ mcp = FastMCP("Pushbutan")
 
 @mcp.tool()
 def list_gpu_instance_types():
-    """ List all available GPU instance types 
-    
+    """ List all available GPU instance types
+
     Returns:
         JSON string containing the list of available GPU instance types
     """
@@ -19,8 +19,8 @@ def list_gpu_instance_types():
 
 @mcp.tool()
 def list_workflows():
-    """ List all available workflows on the rocket-platform repo 
-    
+    """ List all available workflows on the rocket-platform repo
+
     Returns:
         String representation of the available GitHub Actions workflows
     """
@@ -31,17 +31,17 @@ def list_workflows():
 
 @mcp.tool()
 def start_linux_gpu_instance(instance_type: InstanceType, branch: str = "main", lifetime: int = 24):
-    """ Start a new Linux GPU instance 
-    
+    """ Start a new Linux GPU instance
+
         Trigger creation of a Linux GPU instance
-        
+
         Args:
             instance_type: EC2 GPU instance type (g4dn.4xlarge, p3.2xlarge)
             branch: Git branch to use for the job (default: "main")
             lifetime: Hours before instance termination (default: 24)
-            
+
         Returns:
-            String representation of the workflow information. Use get_instance_status 
+            String representation of the workflow information. Use get_instance_status
             with the returned run_id to check instance status.
     """
     pb = Pushbutan()
@@ -50,13 +50,13 @@ def start_linux_gpu_instance(instance_type: InstanceType, branch: str = "main", 
 
 @mcp.tool()
 def stop_instance(instance_id: str):
-    """ Stop the current instance 
-    
+    """ Stop the current instance
+
     Args:
         instance_id: ID of the instance to stop
-        
+
     Returns:
-        String representation of the workflow information. Use get_instance_status 
+        String representation of the workflow information. Use get_instance_status
         with the returned run_id to check stop status.
     """
     pb = Pushbutan()
@@ -65,11 +65,11 @@ def stop_instance(instance_id: str):
 
 @mcp.tool()
 def get_instance_details(run_id: int):
-    """ Get the instance details from the job logs 
-    
+    """ Get the instance details from the job logs
+
     Args:
         run_id: The workflow run ID to check
-        
+
     Returns:
         String representation of the instance details (ID, IP, etc)
         Will raise an error if logs cannot be parsed or instance details not found
@@ -82,10 +82,10 @@ def get_instance_details(run_id: int):
 @mcp.tool()
 def get_job_status(run_id: int):
     """ Get the status of a workflow run
-    
+
     Args:
         run_id: The workflow run ID to check
-        
+
     Returns:
         String representation of the workflow status.
         Status will be one of: "ready", "in_progress", or "failed"
@@ -93,7 +93,7 @@ def get_job_status(run_id: int):
     pb = Pushbutan()
     try:
         run = pb.get_workflow_run(run_id)
-        
+
         if run.status == "completed":
             if run.conclusion == "success":
                 return json.dumps({
@@ -111,7 +111,7 @@ def get_job_status(run_id: int):
                 "workflow_status": run.status,
                 "workflow_conclusion": run.conclusion
             })
-            
+
     except PushbutanError as e:
         return json.dumps({
             "status": "failed",
